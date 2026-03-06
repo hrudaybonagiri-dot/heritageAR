@@ -1,0 +1,28 @@
+{
+  "name": "ar-heritage-backend",
+  "version": "1.0.0",
+  "description": "Backend for AR-based cultural heritage platform",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/server-simple.js",
+    "start": "node src/server-simple.js",
+    "migrate": "node src/database/migrate.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1",
+    "jsonwebtoken": "^9.0.2",
+    "bcryptjs": "^2.4.3",
+    "multer": "^1.4.5-lts.1",
+    "joi": "^17.11.0",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "ws": "^8.16.0",
+    "lowdb": "^7.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

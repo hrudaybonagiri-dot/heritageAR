@@ -1,0 +1,433 @@
+# AR Scanner Architecture
+
+## System Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         USER DEVICE                              │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │                    BROWSER (Chrome/Edge)                   │  │
+│  │  ┌─────────────────────────────────────────────────────┐  │  │
+│  │  │              React Application                       │  │  │
+│  │  │                                                       │  │  │
+│  │  │  ┌─────────────────────────────────────────────┐    │  │  │
+│  │  │  │      ExploreHeritage Page                   │    │  │  │
+│  │  │  │  - Monument grid display                    │    │  │  │
+│  │  │  │  - "Add New Heritage" button                │    │  │  │
+│  │  │  │  - Filters and search                       │    │  │  │
+│  │  │  └─────────────────┬───────────────────────────┘    │  │  │
+│  │  │                    │ Opens                           │  │  │
+│  │  │                    ▼                                 │  │  │
+│  │  │  ┌─────────────────────────────────────────────┐    │  │  │
+│  │  │  │      ARScannerModal Component               │    │  │  │
+│  │  │  │  ┌───────────────────────────────────────┐  │    │  │  │
+│  │  │  │  │  Step 1: Form                         │  │    │  │  │
+│  │  │  │  │  - Name, description, location, era   │  │    │  │  │
+│  │  │  │  └───────────────────────────────────────┘  │    │  │  │
+│  │  │  │  ┌───────────────────────────────────────┐  │    │  │  │
+│  │  │  │  │  Step 2: Scanning                     │  │    │  │  │
+│  │  │  │  │  - Initialize AR session              │  │    │  │  │
+│  │  │  │  │  - Load 3D model                      │  │    │  │  │
+│  │  │  │  └───────────────────────────────────────┘  │    │  │  │
+│  │  │  │  ┌───────────────────────────────────────┐  │    │  │  │
+│  │  │  │  │  Step 3: Placing                      │  │    │  │  │
+│  │  │  │  │  - Show camera feed                   │  │    │  │  │
+│  │  │  │  │  - Display reticle on surfaces        │  │    │  │  │
+│  │  │  │  │  - Wait for tap                       │  │    │  │  │
+│  │  │  │  └───────────────────────────────────────┘  │    │  │  │
+│  │  │  │  ┌───────────────────────────────────────┐  │    │  │  │
+│  │  │  │  │  Step 4: Capturing                    │  │    │  │  │
+│  │  │  │  │  - Capture canvas screenshot          │  │    │  │  │
+│  │  │  │  │  - Convert to JPEG blob               │  │    │  │  │
+│  │  │  │  └───────────────────────────────────────┘  │    │  │  │
+│  │  │  │  ┌───────────────────────────────────────┐  │    │  │  │
+│  │  │  │  │  Step 5: Uploading                    │  │    │  │  │
+│  │  │  │  │  - Create FormData                    │  │    │  │  │
+│  │  │  │  │  - POST to backend                    │  │    │  │  │
+│  │  │  │  └───────────────────────────────────────┘  │    │  │  │
+│  │  │  │  ┌───────────────────────────────────────┐  │    │  │  │
+│  │  │  │  │  Step 6: Success                      │  │    │  │  │
+│  │  │  │  │  - Show success message               │  │    │  │  │
+│  │  │  │  │  - Refresh monument list              │  │    │  │  │
+│  │  │  │  └───────────────────────────────────────┘  │    │  │  │
+│  │  │  └─────────────────┬───────────────────────────┘    │  │  │
+│  │  │                    │ Uses                           │  │  │
+│  │  │                    ▼                                 │  │  │
+│  │  │  ┌─────────────────────────────────────────────┐    │  │  │
+│  │  │  │      ARScanner Utility Class                │    │  │  │
+│  │  │  │  - Three.js scene setup                     │    │  │  │
+│  │  │  │  - WebXR session management                 │    │  │  │
+│  │  │  │  - Hit-test API integration                 │    │  │  │
+│  │  │  │  - Model loading (GLTFLoader)               │    │  │  │
+│  │  │  │  - Reticle rendering                        │    │  │  │
+│  │  │  │  - Placement logic                          │    │  │  │
+│  │  │  │  - Screenshot capture                       │    │  │  │
+│  │  │  └─────────────────┬───────────────────────────┘    │  │  │
+│  │  │                    │ Calls                           │  │  │
+│  │  │                    ▼                                 │  │  │
+│  │  │  ┌─────────────────────────────────────────────┐    │  │  │
+│  │  │  │      MonumentService                        │    │  │  │
+│  │  │  │  - createMonument(data)                     │    │  │  │
+│  │  │  │  - getMonuments(filters)                    │    │  │  │
+│  │  │  │  - FormData builder                         │    │  │  │
+│  │  │  │  - Error handling                           │    │  │  │
+│  │  │  └─────────────────┬───────────────────────────┘    │  │  │
+│  │  │                    │ HTTP POST                       │  │  │
+│  │  └────────────────────┼─────────────────────────────────┘  │  │
+│  └───────────────────────┼─────────────────────────────────────┘  │
+└────────────────────────┼─────────────────────────────────────────┘
+                         │
+                         │ HTTPS
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         BACKEND SERVER                           │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │                    Express.js Server                       │  │
+│  │                                                             │  │
+│  │  ┌─────────────────────────────────────────────────────┐  │  │
+│  │  │      POST /api/monuments Endpoint                   │  │  │
+│  │  │  - Multer middleware for file uploads               │  │  │
+│  │  │  - Parse FormData                                   │  │  │
+│  │  │  - Validate required fields                         │  │  │
+│  │  │  - Extract files from request                       │  │  │
+│  │  │  └─────────────────┬───────────────────────────────┘  │  │
+│  │  │                    │                                   │  │
+│  │  │                    ▼                                   │  │
+│  │  │  ┌─────────────────────────────────────────────────┐  │  │
+│  │  │  │      File Storage Handler                       │  │  │
+│  │  │  │  - Create uploads directory if needed           │  │  │
+│  │  │  │  - Generate unique filename                     │  │  │
+│  │  │  │  - Write thumbnail to disk                      │  │  │
+│  │  │  │  - Write model to disk (if provided)            │  │  │
+│  │  │  │  - Return file URLs                             │  │  │
+│  │  │  └─────────────────┬───────────────────────────────┘  │  │
+│  │  │                    │                                   │  │
+│  │  │                    ▼                                   │  │
+│  │  │  ┌─────────────────────────────────────────────────┐  │  │
+│  │  │  │      Response Builder                           │  │  │
+│  │  │  │  - Create monument object                       │  │  │
+│  │  │  │  - Include file URLs                            │  │  │
+│  │  │  │  - Return JSON response                         │  │  │
+│  │  │  └─────────────────────────────────────────────────┘  │  │
+│  │  └─────────────────────────────────────────────────────────┘  │
+│  └───────────────────────────────────────────────────────────────┘  │
+│                                                                   │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │                    File System                             │  │
+│  │  uploads/                                                  │  │
+│  │  ├── thumbnails/                                           │  │
+│  │  │   └── monument-[timestamp].jpg                         │  │
+│  │  └── models/                                               │  │
+│  │      └── monument-[timestamp].glb                          │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Data Flow
+
+```
+┌──────────────┐
+│     USER     │
+└──────┬───────┘
+       │ 1. Clicks "Add New Heritage"
+       ▼
+┌──────────────────────┐
+│  ARScannerModal      │
+│  (Form Step)         │
+└──────┬───────────────┘
+       │ 2. Fills form & clicks "Start AR Scanning"
+       ▼
+┌──────────────────────┐
+│  ARScanner.init()    │
+│  - Create scene      │
+│  - Setup camera      │
+│  - Create renderer   │
+└──────┬───────────────┘
+       │ 3. Initialize complete
+       ▼
+┌──────────────────────┐
+│  ARScanner.start()   │
+│  - Request XR session│
+│  - Enable hit-test   │
+└──────┬───────────────┘
+       │ 4. AR session active
+       ▼
+┌──────────────────────┐
+│  WebXR Hit-Test API  │
+│  - Detect surfaces   │
+│  - Update reticle    │
+└──────┬───────────────┘
+       │ 5. Surface detected
+       ▼
+┌──────────────────────┐
+│  USER TAPS SCREEN    │
+└──────┬───────────────┘
+       │ 6. Select event
+       ▼
+┌──────────────────────┐
+│  ARScanner.onSelect()│
+│  - Place model       │
+│  - Hide reticle      │
+└──────┬───────────────┘
+       │ 7. Model placed
+       ▼
+┌──────────────────────┐
+│  ARScanner.capture() │
+│  - Screenshot canvas │
+│  - Convert to blob   │
+└──────┬───────────────┘
+       │ 8. Thumbnail blob
+       ▼
+┌──────────────────────┐
+│  MonumentService     │
+│  - Create FormData   │
+│  - Add text fields   │
+│  - Add thumbnail     │
+└──────┬───────────────┘
+       │ 9. POST request
+       ▼
+┌──────────────────────┐
+│  Backend API         │
+│  - Parse FormData    │
+│  - Validate data     │
+│  - Save files        │
+└──────┬───────────────┘
+       │ 10. Success response
+       ▼
+┌──────────────────────┐
+│  ExploreHeritage     │
+│  - Refresh list      │
+│  - Show new monument │
+└──────────────────────┘
+```
+
+## Component Interaction
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    ExploreHeritage Page                      │
+│                                                               │
+│  State:                                                       │
+│  - monuments: Monument[]                                     │
+│  - showARScanner: boolean                                    │
+│                                                               │
+│  Methods:                                                     │
+│  - fetchMonuments()                                          │
+│  - handleScanSuccess()                                       │
+│                                                               │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │              ARScannerModal                          │    │
+│  │                                                       │    │
+│  │  Props:                                               │    │
+│  │  - open: boolean                                     │    │
+│  │  - onClose: () => void                               │    │
+│  │  - onSuccess: () => void                             │    │
+│  │                                                       │    │
+│  │  State:                                               │    │
+│  │  - step: ScanStep                                    │    │
+│  │  - formData: FormData                                │    │
+│  │  - isARSupported: boolean                            │    │
+│  │                                                       │    │
+│  │  ┌─────────────────────────────────────────────┐    │    │
+│  │  │           ARScanner Instance                 │    │    │
+│  │  │                                               │    │    │
+│  │  │  Properties:                                 │    │    │
+│  │  │  - scene: THREE.Scene                        │    │    │
+│  │  │  - camera: THREE.Camera                      │    │    │
+│  │  │  - renderer: THREE.WebGLRenderer             │    │    │
+│  │  │  - reticle: THREE.Mesh                       │    │    │
+│  │  │  - model: THREE.Group                        │    │    │
+│  │  │  - hitTestSource: XRHitTestSource            │    │    │
+│  │  │                                               │    │    │
+│  │  │  Methods:                                     │    │    │
+│  │  │  - initialize()                              │    │    │
+│  │  │  - startARSession()                          │    │    │
+│  │  │  - loadModel(url)                            │    │    │
+│  │  │  - captureThumbnail()                        │    │    │
+│  │  │  - endSession()                              │    │    │
+│  │  │  - dispose()                                 │    │    │
+│  │  └─────────────────────────────────────────────┘    │    │
+│  │                                                       │    │
+│  │  ┌─────────────────────────────────────────────┐    │    │
+│  │  │         MonumentService                      │    │    │
+│  │  │                                               │    │    │
+│  │  │  Static Methods:                             │    │    │
+│  │  │  - createMonument(data)                      │    │    │
+│  │  │  - getMonuments(params)                      │    │    │
+│  │  │  - uploadThumbnail(blob)                     │    │    │
+│  │  └─────────────────────────────────────────────┘    │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## WebXR Integration
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    WebXR Session Lifecycle                   │
+└─────────────────────────────────────────────────────────────┘
+
+1. Check Support
+   navigator.xr.isSessionSupported('immersive-ar')
+   ↓
+2. Request Session
+   navigator.xr.requestSession('immersive-ar', {
+     requiredFeatures: ['hit-test']
+   })
+   ↓
+3. Set Session
+   renderer.xr.setSession(session)
+   ↓
+4. Request Reference Spaces
+   session.requestReferenceSpace('viewer')
+   session.requestReferenceSpace('local')
+   ↓
+5. Request Hit-Test Source
+   session.requestHitTestSource({ space: viewerSpace })
+   ↓
+6. Animation Loop
+   renderer.setAnimationLoop((time, frame) => {
+     // Perform hit-test
+     const results = frame.getHitTestResults(hitTestSource)
+     // Update reticle
+     // Render scene
+   })
+   ↓
+7. Handle Select Events
+   controller.addEventListener('select', () => {
+     // Place model at reticle position
+   })
+   ↓
+8. End Session
+   session.end()
+```
+
+## File Upload Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    File Upload Process                       │
+└─────────────────────────────────────────────────────────────┘
+
+Frontend:
+1. Capture canvas as blob
+   renderer.domElement.toBlob(blob => {...})
+   ↓
+2. Create FormData
+   const formData = new FormData()
+   formData.append('name', 'Monument Name')
+   formData.append('thumbnail', blob, 'thumbnail.jpg')
+   ↓
+3. POST to backend
+   fetch('/api/monuments', {
+     method: 'POST',
+     body: formData
+   })
+
+Backend:
+4. Multer middleware
+   upload.fields([{ name: 'thumbnail', maxCount: 1 }])
+   ↓
+5. Extract file
+   const file = req.files.thumbnail[0]
+   ↓
+6. Generate filename
+   const filename = `monument-${Date.now()}.jpg`
+   ↓
+7. Write to disk
+   await writeFile(path, file.buffer)
+   ↓
+8. Return URL
+   res.json({ thumbnail_url: `/uploads/thumbnails/${filename}` })
+```
+
+## Error Handling
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Error Handling Flow                       │
+└─────────────────────────────────────────────────────────────┘
+
+Try:
+  ├─ Check AR support
+  │  └─ Not supported → Show warning, disable button
+  │
+  ├─ Initialize AR session
+  │  └─ Failed → Toast error, return to form
+  │
+  ├─ Load model
+  │  └─ Failed → Toast error, return to form
+  │
+  ├─ Capture thumbnail
+  │  └─ Failed → Toast error, return to form
+  │
+  └─ Upload to backend
+     └─ Failed → Toast error, return to form
+
+Catch:
+  └─ Log error
+     └─ Show user-friendly message
+        └─ Reset to form step
+```
+
+## State Management
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Modal State Machine                       │
+└─────────────────────────────────────────────────────────────┘
+
+States:
+  'form'       → User fills monument details
+  'scanning'   → Initializing AR session
+  'placing'    → Waiting for user to place model
+  'capturing'  → Capturing thumbnail
+  'uploading'  → Sending data to backend
+  'success'    → Upload complete
+
+Transitions:
+  form → scanning      (on form submit)
+  scanning → placing   (on AR session start)
+  placing → capturing  (on model placed)
+  capturing → uploading (on thumbnail captured)
+  uploading → success  (on upload complete)
+  * → form            (on error or cancel)
+```
+
+## Technology Stack
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Technology Layers                         │
+└─────────────────────────────────────────────────────────────┘
+
+Presentation Layer:
+  - React 18
+  - TypeScript
+  - Tailwind CSS
+  - shadcn/ui components
+
+AR Layer:
+  - Three.js (3D rendering)
+  - WebXR Device API (AR session)
+  - GLTFLoader (model loading)
+
+Service Layer:
+  - Fetch API (HTTP requests)
+  - FormData (file uploads)
+
+Backend Layer:
+  - Express.js (server)
+  - Multer (file uploads)
+  - Node.js fs (file system)
+
+Storage Layer:
+  - Local file system
+  - uploads/thumbnails/
+  - uploads/models/
+```
+
+---
+
+This architecture provides a clean separation of concerns, making the code maintainable, testable, and scalable.
